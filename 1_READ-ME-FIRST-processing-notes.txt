@@ -1,0 +1,17 @@
+Cleaning and Formatting Scripts
+
+1. Make a backup of your Mongo dataset by creating a copy of the current collection (table). In mongoclient, run 'db.sb2018.copyTo('sb2018BACK')'. You will get a deprecated warning but it works. It takes time before the process finishes due to high number of tweets. It will display the number of records copied when done. 
+
+2. identify valid time tweets (between start and end of game) and remove all invalid tweets (1_valid_tweets_during_game_time.py)
+
+3. insert ad title to tweets (2_ad_adds_title_to_tweet.py). Before you run this script, you need to add all the hashtags for each ad into the script. See examples for 'budweiser' and 'pringles' in the script. 
+
+4. insert brand to tweet (3_add_brand_names.py) 
+
+5. add sentiment to tweet (4_add_sentiment.py)
+
+6. add period into tweet (5_create_period.py)
+
+7. count ads, brands, (see respective py scripts).
+
+8. Push dataset from origin to destination server (8_push_dataset_to_another_VM.py) 
