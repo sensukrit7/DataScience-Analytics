@@ -1,0 +1,515 @@
+---
+title: "Project on House Price Prediction - Sukrit Sen & Vinod Krishnan"
+output:
+  html_notebook: default
+  pdf_document: default
+---
+# Importing Libraries as required :
+
+rm(list = ls())
+library(caret)
+library(dplyr)
+library(tidyverse)
+library(magrittr)
+library(arm)
+library(caret)
+library(rms) 
+library(corrplot)  
+library(missForest) 
+library(MASS)
+library(car)
+library(mice)
+library(tree)
+library(ISLR)
+library(rpart)
+library(randomForest)
+
+
+library(gdata)
+library(tidyverse)
+library(stringr)
+library(lubridate)
+library(scales)
+library(graphics)
+library(caret)
+library(Amelia)
+
+library(knitr)
+library(plyr)
+library(dplyr)
+library(corrplot)
+library(caret)
+library(gridExtra)
+library(scales)
+library(randomForest)
+library(psych)
+
+
+
+
+# Import train and test Data-Set:
+train <- read.csv("C:/Users/sensu/Desktop/MSIS/SNPD/Project/all/train.csv", stringsAsFactors = F)
+test <- read.csv("C:/Users/sensu/Desktop/MSIS/SNPD/Project/all/test.csv", stringsAsFactors = F)
+
+
+```{r}
+
+#Exploring the data-set:
+str(train)
+str(test)
+dim(train)
+dim(test)
+names(train)
+names(test)
+head(train)
+head(test)
+summary(train)
+summary(test)
+
+#Rows with missing values:
+
+na.cols = which(colSums(is.na(train)) > 0)
+sort(colSums(sapply(train[na.cols], is.na)), decreasing = TRUE)
+
+#Combining the train & test data-set together for further imputaion and exploratory data analysis:
+#Labels will be removed as advised, but will be required later for creation of submission file:
+
+test_LABEL <- test$Id
+test <- test[,-1,drop=FALSE]
+train <- train[,-1,drop=FALSE]
+class(train)
+class(test)
+
+#Creating SalePrice in Test Data-Set with NA Values, so that prediction can be done later:
+
+test$SalePrice <- NA
+table(test$SalePrice)
+summary(test)
+DATA <- rbind(train, test)
+dim(DATA)
+```
+
+
+```{r}
+
+#Exploratory Data-Analysis continued for the outcome variable and selection of most important variables using methods of correlation matrix, near zero variance and imputation based on the understanding of the data:
+
+#Setting seed for consistency:
+set.seed(920)
+
+# histogram of sale price which is the outcome variable:
+# 1459 Missing Values are for the values of the test-data-set.
+ggplot(DATA, aes(x = SalePrice)) + 
+  geom_histogram(fill = "red", col = "black", bins = 50,aes(y = ..density..)) + geom_density() +
+  scale_x_continuous(name = "Sale Price", labels = dollar, limits = c(0, 800000))
+
+#SalePrice is right skewed, which means that these can be pure outliers, or data entry or there are exorbirtantly highly priced houses but the count of such houses are very less. This will inturn skew the distribution of data and the prediction calculation. For the Linear and Logistic Regression, we have to make sure that the relationship between input variables and output variables is approximately linear, that the input variables are approximately normal in distribution, and that the output variable is constant variance, hence we will log transform the output variable.
+
+options(scipen=10000)
+ggplot(DATA, aes(x = log(DATA$SalePrice))) +
+  geom_histogram(binwidth = 0.05 ,  fill = "blue",aes(y = ..density..)) + geom_density() +
+  ggtitle("Figure 2 Histogram of log SalePrice") +
+  ylab("Count of houses") +
+  xlab("Housing Price") + 
+  theme(plot.title = element_text(hjust = 0.5))
+
+
+```
+
+
+
+
+```{r}
+
+#Imputation of Missing Data and factorizing the variables required:
+#We have also converted character variables into ordinal integers if there is clear ordinality, or into factors if levels are categories without ordinality.
+
+na.cols = which(colSums(is.na(DATA)) > 0)
+sort(colSums(sapply(DATA[na.cols], is.na)), decreasing = TRUE)
+
+str(DATA)
+numericcolumns<-which(sapply(DATA, is.numeric))
+
+
+DATA$LotConfig <- as.factor(DATA$LotConfig)
+DATA$MSZoning <- as.factor(DATA$MSZoning)
+DATA$Utilities <- NULL
+DATA$Alley <-NULL
+DATA$Exterior1st <- as.factor(DATA$Exterior1st)
+DATA$Exterior2nd <- as.factor(DATA$Exterior2nd)
+DATA$Electrical <- as.factor(DATA$Electrical)
+DATA$SaleType <- as.factor(DATA$SaleType)
+DATA$SaleCondition <- as.factor(DATA$SaleCondition)
+DATA$Foundation <- as.factor(DATA$Foundation)
+DATA$Heating <- as.factor(DATA$Heating)
+DATA$RoofStyle <- as.factor(DATA$RoofStyle)
+DATA$LandContour <- as.factor(DATA$LandContour)
+DATA$BldgType <- as.factor(DATA$BldgType)
+DATA$Neighborhood <- as.factor(DATA$Neighborhood)
+DATA$MoSold <- as.factor(DATA$MoSold)
+DATA$MSSubClass <- as.factor(DATA$MSSubClass)
+
+
+
+#Values with "NA" are replaced with their respective logical transformation, the value of "NA" in Alley/Fence/FIrePlace etc signifies that these qualities and amenities are missing in the house. Hence replacing these values with observations as below:
+
+
+DATA$BsmtQual[is.na(DATA$BsmtQual)] = "No basement"
+
+DATA$BsmtCond[is.na(DATA$BsmtCond)] = "No basement"
+
+DATA$BsmtExposure[is.na(DATA$BsmtExposure)] = "No basement"
+
+DATA$BsmtFinType1[is.na(DATA$BsmtFinType1)] = "No basement"
+
+DATA$BsmtFinType2[is.na(DATA$BsmtFinType2)] = "No basement"
+
+DATA$FireplaceQu[is.na(DATA$FireplaceQu)] = "No fireplace"
+
+DATA$GarageType[is.na(DATA$GarageType)] = "No garage"
+
+DATA$GarageFinish[is.na(DATA$GarageFinish)] = "No garage"
+
+DATA$GarageQual[is.na(DATA$GarageQual)] = "No garage"
+
+DATA$GarageCond[is.na(DATA$GarageCond)] = "No garage"
+
+DATA$PoolQC[is.na(DATA$PoolQC)] = "No pool"
+
+DATA$Fence[is.na(DATA$Fence)] = "No fence"
+
+DATA$MiscFeature[is.na(DATA$MiscFeature)] = "None"
+
+
+#Checking missing values again:
+na.cols = which(colSums(is.na(DATA)) > 0)
+sort(colSums(sapply(DATA[na.cols], is.na)), decreasing = TRUE)
+
+#Missing Values still present in predictor variables like : LotFrontage,GarageYrBuilt,MasVnrType & MasVnrArea.
+
+#For Lot Frontage Area, the most reasonable imputation seems to take the median per neigborhood:
+
+for (i in 1:nrow(DATA)){
+        if(is.na(DATA$LotFrontage[i])){
+               DATA$LotFrontage[i] <- as.integer(median(DATA$LotFrontage[DATA$Neighborhood==DATA$Neighborhood[i]], na.rm=TRUE)) 
+        }
+}
+
+#For missing values in Garage Year Built, we can replace the missing values with the values of the Year in which the house was built, as it a a high probablity that the Garage would be built at the time of building the house:
+
+DATA$GarageYrBlt[is.na(DATA$GarageYrBlt)] <- DATA$YearBuilt[is.na(DATA$GarageYrBlt)]
+
+#Filling the missing values in Masonry veneer type and area as None, since it signifies that if there is no Veneer Area in the house, there will be no Veneer Type:
+
+DATA$MasVnrType[is.na(DATA$MasVnrType)] <- 'No Veneer'
+DATA$MasVnrArea[is.na(DATA$MasVnrArea)] <-0
+
+# For remaing missing values in different functionalities, we are assuming that missing values indicates absence of the features in the house and in case of categorical variables, we are imputing with the mode:
+
+DATA$BsmtFullBath[is.na(DATA$BsmtFullBath)] <-0
+DATA$BsmtHalfBath[is.na(DATA$BsmtHalfBath)] <-0
+DATA$BsmtFinSF1[is.na(DATA$BsmtFinSF1)] <-0
+DATA$BsmtFinSF2[is.na(DATA$BsmtFinSF2)] <-0
+DATA$BsmtUnfSF[is.na(DATA$BsmtUnfSF)] <-0
+DATA$TotalBsmtSF[is.na(DATA$TotalBsmtSF)] <-0
+
+DATA$MSZoning[is.na(DATA$MSZoning)] <- names(sort(-table(DATA$MSZoning)))[1]
+DATA$MSZoning <- as.factor(DATA$MSZoning)
+
+DATA$Utilities <- NULL
+DATA$Functional<-NULL
+DATA$KitchenQual[is.na(DATA$KitchenQual)]  <- 'TA' 
+
+DATA$Exterior1st[is.na(DATA$Exterior1st)] <- names(sort(-table(DATA$Exterior1st)))[1]
+DATA$Exterior1st <- as.factor(DATA$Exterior1st)
+
+DATA$Exterior2nd[is.na(DATA$Exterior2nd)] <- names(sort(-table(DATA$Exterior2nd)))[1]
+DATA$Exterior2nd <- as.factor(DATA$Exterior2nd)
+
+DATA$GarageCars[2577] <- 0
+DATA$GarageArea[2577] <- 0
+
+DATA$Electrical[is.na(DATA$Electrical)] <- names(sort(-table(DATA$Electrical)))[1]
+DATA$Electrical <- as.factor(DATA$Electrical)
+
+DATA$SaleType[is.na(DATA$SaleType)] <- names(sort(-table(DATA$SaleType)))[1]
+DATA$SaleType <- as.factor(DATA$SaleType)
+
+
+#Creating Co-relation Plot & removing Near Zero Variance Predictors, to identify the most important factors which are contributing towards the Sale Price:
+
+numericcolumns<-which(sapply(DATA, is.numeric))
+DATA_numVar <- DATA[, numericcolumns]
+COR_numVar <- cor(DATA_numVar, use="pairwise.complete.obs") 
+COR_sorted <- as.matrix(sort(COR_numVar[,'SalePrice'], decreasing = TRUE))
+COR_High <- names(which(apply(COR_sorted, 1, function(x) abs(x)>0.5)))
+COR_numVar <- COR_numVar[COR_High, COR_High]
+
+corrplot.mixed(COR_numVar, tl.col="black", tl.pos = "lt")
+
+
+# Checking Near Zero Variance Predictors and Removing the same:
+
+nearZeroVar(DATA,saveMetrics = TRUE)
+remove_cols <- colnames(DATA[nearZeroVar(DATA)])
+remove_cols
+
+all_cols <- names(DATA)
+DATA_FIN <- DATA[ , setdiff(all_cols, remove_cols)]
+
+#Checking for missing values before regression:
+
+na.cols = which(colSums(is.na(DATA)) > 0)
+sort(colSums(sapply(DATA[na.cols], is.na)), decreasing = TRUE)
+
+
+```
+
+
+
+
+
+
+```{r}
+
+#Composing the train and test data set and running different regressions to identify most important predictors influencing the SalePrice
+
+#Different regreession would be run on the outcome variable as "Log(SalePrice)", we will exponentiate the prediction values to retrieve the values that are calculated by the models, to avoid the skew in the outcome varaible, we have selected taken the Log Transformation of the same:
+
+DATA_FIN$SalePrice <- log(DATA_FIN$SalePrice) 
+skew(DATA_FIN$SalePrice)
+
+TRAIN <- DATA_FIN[!is.na(DATA_FIN$SalePrice),]
+TEST <- DATA_FIN[is.na(DATA_FIN$SalePrice),]
+
+
+
+#Defining Control
+control<-  trainControl(method="repeatedcv", number=10, repeats=3)
+
+#Linear Model :
+#Cross Validation to find expected RMSE of LM method:
+
+set.seed(920)
+LINEAR_MODEL<-train(SalePrice~.,
+                    method="lm",
+                    data = TRAIN,
+                    preProcess=c("center","scale"),
+                    trControl=control)
+summary(LINEAR_MODEL)
+LM_Pred <- predict(LINEAR_MODEL,TEST)
+prediction_LM <- exp(LM_Pred)
+head(prediction_LM)
+
+rmse <- function(actVal, predVal) {
+  sqrt(mean((actVal - predVal)^2))
+}
+
+rmse(TRAIN$SalePrice, predict(LINEAR_MODEL))
+cat('The RMSE for Linear Model with all predictors is', rmse(TRAIN$SalePrice, predict(LINEAR_MODEL)))
+
+
+#Selecting most important predictors from the Linear Model based on p-value and confidence interval calculation and significance level. Previous Model has an R^2 of 0.91 which seems to be a case of over-fitting, in sample RMSE is also recorded to be 0.112, to avoid over-fitting and to make the model more genric so it can fir the test data, we have reduced the number of preedictors to below mentioned explanatory variables:
+
+set.seed(920)
+LM_MOD <- lm(SalePrice ~ MSSubClass+LotArea+MSZoning+GarageCars+
+                    Neighborhood+GrLivArea+
+                    OverallQual+OverallCond+
+                    KitchenQual+BsmtFullBath
+                    , data=TRAIN, preProcess=c("center","scale"),
+                    trControl=control)
+summary(LM_MOD)
+rmse(TRAIN$SalePrice, predict(LM_MOD))
+cat('The RMSE for Linear Model with selected predictors is', rmse(TRAIN$SalePrice, predict(LM_MOD)))
+plot(LM_MOD)
+
+```
+
+
+
+
+
+```{r}
+
+# Using Ridge model with 10 fold cross validation
+#Setting up a grid range for the lamba values, the vector is selected based on the alpha value of 0, so that we can incorporate range of alpha values from 10^(-2) to 10^(2) with incremental 
+
+set.seed(920)
+RIDGE_MOD <- train(SalePrice ~ ., 
+                   data = TRAIN,
+                   preProcess = c("center", "scale"),
+                   method = "glmnet",
+                   trControl = control,
+                   tuneGrid= expand.grid(
+                     alpha=0,
+                     lambda = seq(0.001,0.1,0.0005)))
+RIDGE_MOD
+summary(RIDGE_MOD)
+rmse(TRAIN$SalePrice, predict(RIDGE_MOD))
+cat('The RMSE for Ridge Model with selected predictors is', rmse(TRAIN$SalePrice, predict(RIDGE_MOD)))
+plot(RIDGE_MOD)
+
+#Finding best predictors put of various models, using the VAR-IMP function:
+col_index <- varImp(RIDGE_MOD)$importance %>% 
+  mutate(names=row.names(.)) %>%
+  arrange(-Overall)
+imp_names <- col_index$names[1:5]
+imp_names
+
+#The best-value of Ridge Model is achieved for alpha = 0 and lambda = 0.085.
+#Below are the vaues recorded for the same:
+
+#lambda  RMSE       Rsquared   MAE 
+#0.0855  0.1419410  0.8738128  0.09148602
+
+
+# Using LASSO model :
+
+set.seed(920)
+LASSO_MOD <- train(SalePrice ~ ., 
+                   data = TRAIN,
+                   preProcess = c("center", "scale"),
+                   method = "glmnet",
+                  trControl = control,
+                   tuneGrid= expand.grid(
+                     alpha=1,
+                     lambda = seq(0.001,0.1,by = 0.0005)))
+LASSO_MOD
+summary(LASSO_MOD)
+rmse(TRAIN$SalePrice, predict(LASSO_MOD))
+cat('The RMSE for LASSO Model with selected predictors is', rmse(TRAIN$SalePrice, predict(LASSO_MOD)))
+plot(LASSO_MOD)
+
+#Finding best predictors put of various models, using the VAR-IMP function:
+col_index <- varImp(LASSO_MOD)$importance %>% 
+  mutate(names=row.names(.)) %>%
+  arrange(-Overall)
+imp_names <- col_index$names[1:5]
+imp_names
+
+#The best-value of LASSO Model is achieved for:
+# alpha = 1 and lambda = 0.0035.
+#lambda  RMSE      Rsquared   MAE 
+#0.0035  0.1401432  0.8778394  0.08996878
+
+#Using Mix Glmnet model
+
+set.seed(920)
+MIX_MOD <- train(SalePrice ~ ., 
+data = TRAIN, preProcess = c("center", "scale"),
+ trControl = control,
+method = "glmnet", tuneGrid= expand.grid(
+                   alpha=0:1,
+                   lambda = seq(0.001,0.1,by = 0.0005)))
+MIX_MOD
+summary(MIX_MOD)
+rmse(TRAIN$SalePrice, predict(MIX_MOD))
+cat('The RMSE for MIX Model with selected predictors is', rmse(TRAIN$SalePrice, predict(MIX_MOD)))
+plot(MIX_MOD)
+
+#Finding best predictors put of various models, using the VAR-IMP function:
+col_index <- varImp(MIX_MOD)$importance %>% 
+  mutate(names=row.names(.)) %>%
+  arrange(-Overall)
+imp_names <- col_index$names[1:5]
+imp_names
+
+
+#The best-value of MIX Model is achieved for:
+#alpha = 0 and lambda = 0.1.
+#lambda  RMSE      Rsquared   MAE 
+# 0.1  0.141548  0.8761644  0.09183924
+
+```
+
+
+
+
+```{r}
+
+
+#RANDOM-FOREST MODEL:
+#To make the model computationally less expensive, we have selected only highly relevant predictors from the previous models
+set.seed(920)
+RF_MOD <- train(SalePrice ~GrLivArea +  GarageCars + 
+   OverallQual+ KitchenQual + BsmtQual + OverallCond + BsmtFullBath + OverallQual +
+    ExterQual +  LotArea + TotRmsAbvGrd + 
+    MSSubClass + YearBuilt,
+                data = TRAIN,
+                preProcess = c("center", "scale"),
+                method = "rf",
+                importance=T)
+summary(RF_MOD)
+rmse(TRAIN$SalePrice, predict(RF_MOD))
+cat('The RMSE for Random Forest Model with selected predictors is', rmse(TRAIN$SalePrice, predict(RF_MOD)))
+plot(RF_MOD)
+
+
+#KNN_Model:
+#Using the same perdictors in the KNN Model also and calculating the RMSE for the same:
+
+set.seed(920)
+KNN_MOD <- train(SalePrice ~ GrLivArea +  GarageCars + 
+   OverallQual+ KitchenQual + BsmtQual + OverallCond + BsmtFullBath + OverallQual +
+    ExterQual +  LotArea + TotRmsAbvGrd + 
+    MSSubClass + YearBuilt, 
+      method="knn",
+      preProcess=c("center","scale"),
+      data= TRAIN)
+
+KNN_MOD
+rmse(TRAIN$SalePrice,predict(KNN_MOD))
+cat('The RMSE for KNN Model with selected predictors is', rmse(TRAIN$SalePrice, predict(KNN_MOD)))
+plot(KNN_MOD)
+
+```
+
+```{r}
+
+## Creating different visualizations for the most important predictors selected from Various models:
+
+ggplot(data=DATA[!is.na(DATA$SalePrice),], aes(x=GrLivArea, y=SalePrice))+
+        geom_point(col='magenta') + geom_smooth(method = "lm", se=FALSE, color="black") +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma) 
+
+
+ggplot(DATA[!is.na(DATA$SalePrice),], aes(x=reorder(Neighborhood, SalePrice, FUN=median), y=SalePrice)) +
+        geom_bar(stat='summary', fun.y = "median", fill='red') + labs(x='Neighborhood', y='Median SalePrice') +
+        scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma)
+
+ggplot(data=DATA, aes(x=as.factor(BsmtQual))) +
+        geom_histogram(stat='count')+ labs(x='Height of the basement')
+
+ggplot(data=DATA, aes(x=as.factor(BsmtCond))) +
+        geom_histogram(stat='count')+ labs(x='Rating of general condition')
+
+ggplot(data= DATA, aes(x=GarageArea)) +
+        geom_density()+ggtitle("Distribution of Garage Area")
+
+
+ggplot(DATA[!is.na(DATA$SalePrice),], aes(x=MSSubClass, y=SalePrice)) +
+        geom_bar(stat='summary', fun.y = "median", fill='blue') +
+        scale_y_continuous(breaks= seq(0, 800000, by=50000), labels = comma) +
+  ggtitle("Distribution of MSSubClass")
+
+ggplot(data=DATA[!is.na(DATA$SalePrice),], aes(x=factor(OverallQual), y=SalePrice))+
+        geom_boxplot(col='blue') + labs(x='Overall Quality') +
+        scale_y_continuous(breaks= seq(0, 800000, by=100000), labels = comma)+
+  ggtitle("Variation is Sale Price based on Overall Quality")
+
+ggplot(DATA, aes(x = MSZoning, fill = MSZoning )) + 
+geom_bar()+ 
+scale_fill_hue(c = 80)+
+ggtitle("Distribution of MSZoning")
+
+ggplot(data=DATA[!is.na(DATA$SalePrice),], aes(x=KitchenQual, y=SalePrice, fill=KitchenQual)) + geom_bar(stat="identity")+ggtitle("Variation is Sale Price based on Kitchen Quality")
+
+pairs(~YearBuilt+OverallQual+TotalBsmtSF+GrLivArea,data=DATA,
+   main="Simple Scatterplot Matrix")
+
+```
+
+
+
+
+

@@ -1,0 +1,332 @@
+---
+title: "Interim Report"
+author: "Ashutosh Sharma,Jeevash Mutreja, Tushar Chhabra"
+date: "October 04 2017"
+output: pdf_document
+---
+#Introduction
+What is the problem you are working on? Briey but thoroughly 
+describe the Kaggle train/test format, and your ultimate objective
+in the project.
+
+The dataset taken into consideration from Kaggle predicting the Sales price of individual residential property in Ames, Iowa. The dataset consists of 2919 observations with 80 different variables(excluding SalesPrice) that are 23 nominal, 23 ordinal, 14 discrete and 20 continuous.
+
+The data has been split into two datasets given in csv format - the train dataset consists of 1460 observations with 80 predictor variables and SalePrice as the outcome variable, and the test dataset consists of 1459 observations with 80 predictor values and no SalePrice value given. The train dataset is used for building a efficient model to predict the SalePrice value and the test dataset will be used to predict the SalePrice in order to see the fit and performance of the built model.
+
+The ultimate objective in the project is to anlayze the given data, clean the data, choose five strong predictors and build a model to predict the SalePrice of houses.
+
+#Data and Cleaning
+
+After analyzing the data it was noted for the variables Alley, PoolQC, Fence, MiscFeature, BsmtQual, BsmtCond, BsmtExposure, BsmtFinType1, FireplaceQu, GarageType, GarageFinish, GarageQual and GarageCond NA represents a type of category. These NA values were changed to "zero" so that the system does not consider them as NA values. Two category variables - MasVnrType and Electrical and three continuous variables - LotFrontage, MasVnrArea and GarageYrBlt were found with actually missing data values as NAs. The number of rows with NA values of the categorical variables are 9 rows in total and they were tagged to the value "zero" and later were assigned a level. The NA values for the continuous variables were replaced by their mean values.
+
+MICE imputation method was used to impute the missing values but the values suggested were not a true representation of dataset. As in the values were not even in range of the dataset. So, we chose to replace the missing NA with the above method was used to remove the NAs from the data and clean it
+
+```{r, echo=F, message=F, include=FALSE, warning=FALSE}
+library(MASS)
+library(arm)
+library(caret)
+library(car)
+library(mice)
+library(tree)
+library(ISLR)
+library(rpart)
+library(randomForest)
+
+rmse <- function(actVal, predVal) {
+  sqrt(mean((actVal - predVal)^2))
+}
+  
+kHouseData <- read.csv("train.csv",stringsAsFactors = FALSE)
+kHouseTestData <- read.csv("test.csv",stringsAsFactors = FALSE)
+
+#Cleaning Function
+elements <- names(kHouseData)
+elements <- elements[elements != "SalePrice"]
+for(i in elements)
+{
+  if(any(is.na(kHouseData[[i]])))
+  {
+    if(is.character(kHouseData[[i]]))
+    {
+      kHouseData[[i]][is.na(kHouseData[[i]])] <- "zero"
+      }
+    else
+    {
+      kHouseData[[i]][is.na(kHouseData[[i]])] <- round(mean(kHouseData[[i]],na.rm=TRUE))
+    
+    }
+  }
+}
+
+for(i in elements)
+{
+  if(is.character(kHouseData[[i]]))
+  {
+    levels <- sort(unique(c(kHouseData[[i]])))
+    kHouseData[[i]] <- factor(kHouseData[[i]],levels=levels)
+  }
+}
+
+for (i in elements) {
+  if(class(levels(kHouseData[[i]])) == "character")
+    kHouseData[[i]] <- seq_along(levels(kHouseData[[i]]))[kHouseData[[i]]]
+}
+```
+
+#Model and Model Development
+Total of 6 modelling methods and techniques were used to find out the strongest predictors. The predictors which were the strongest and common among all the models were selected and used as the strongest predictors in one of the models.
+The methods and techniques to find out the strongest predictors are listed below
+
+1) Linear Model
+Strongest predictors from Linear Model
+ PoolQC
+ Utilities
+ Street
+ GarageCars
+ KitchenAbvGr
+ OverallQual
+ ExternalQual
+ Condition2
+ KitchenQual
+ BsmtQual
+```{r,  echo=F, message=F, include=FALSE, warning=FALSE}
+lModel <- lm(SalePrice ~ ., data = kHouseData)
+plot(lModel,1)
+head(sort(abs(lModel$coefficients),decreasing = TRUE),n=11)
+
+```
+
+2) StepAIC
+PoolQC    Utilities       Street   GarageCars KitchenAbvGr  OverallQual 
+ 1913652.240    84433.933    52670.305    29792.921    11927.322    11772.165    10728.937 
+   ExterQual   Condition2  KitchenQual     BsmtQual 
+    9789.469     9451.251     8577.466     8525.241 
+    
+```{r,echo=F, message=F, include=FALSE, warning=FALSE}
+stepAICModel<-stepAIC(BModel<-lm(SalePrice ~ ., data=kHouseData), direction  = "both")
+
+stepAICModel$anova
+
+head(sort(abs(stepAICModel$coefficients),decreasing = TRUE),n=11)
+
+```
+
+3) Ridge Model
+OverallQual   100.00
+GrLivArea      82.06
+X1stFlrSF      56.53
+BsmtQual       53.78
+KitchenQual    52.45
+PoolQC         51.66
+X2ndFlrSF      51.07
+GarageCars     50.21
+ExterQual      48.82
+PoolArea       44.88
+```{r,echo=F, message=F, include=FALSE, warning=FALSE}
+ridgeModel <- train(SalePrice ~ ., 
+                   data = kHouseData,
+                   preProcess = c("center", "scale"),
+                   method = "glmnet",
+                   tuneGrid= expand.grid(
+                     alpha=0,
+                     lambda = seq(0,10, .1)))
+
+plot(ridgeModel$finalModel)
+
+varImp(ridgeModel)
+
+```
+4) Lasso Model
+GrLivArea     100.00
+OverallQual    65.50
+PoolQC         49.65
+PoolArea       45.70
+GarageCars     36.84
+BsmtQual       33.55
+KitchenQual    31.27
+ExterQual      29.56
+YearBuilt      26.76
+MasVnrArea     25.88
+```{r,echo=F, message=F, include=FALSE, warning=FALSE}
+lassoModel <- train(SalePrice ~ ., 
+                   data = kHouseData,
+                   preProcess = c("center", "scale"),
+                   method = "glmnet",
+                   tuneGrid= expand.grid(
+                     alpha=1,
+                     lambda = seq(0,10, .1)))
+
+plot(lassoModel$finalModel)
+
+varImp(lassoModel)
+
+```
+
+5) Ridge and Lasso Mixture Model
+OverallQual   100.00
+GrLivArea      82.06
+X1stFlrSF      56.53
+BsmtQual       53.78
+KitchenQual    52.45
+PoolQC         51.66
+X2ndFlrSF      51.07
+GarageCars     50.21
+ExterQual      48.82
+PoolArea       44.88
+```{r,echo=F, message=F, include=FALSE, warning=FALSE}
+mixModel <- train(SalePrice ~ ., 
+                 data = kHouseData,
+                 preProcess = c("center", "scale"),
+                 method = "glmnet",
+                 tuneGrid= expand.grid(
+                   alpha=0:1,
+                   lambda = seq(0,10, .1)))
+
+plot(mixModel$finalModel)
+
+varImp(mixModel)
+
+```
+
+6) Correlation
+Strongest relation of the variables with output variable SalePrice
+ Overall Qual
+ GrLivArea
+ GarageCars
+ ExterQual
+ GarageArea
+ BsmtQual
+ TotalBsmtSF
+ X1StFlrSF
+ KitchenQual
+ FullBath
+```{r,  echo=F, message=F, include=FALSE, warning=FALSE}
+correlationModel <- cor(kHouseData)
+correlation <- correlationModel[,c(0,81)]
+head(sort(abs(correlation),decreasing = TRUE),n=11)
+
+```
+Comparing the outputs of all the above models and techniques we made a conclusion that the 5 strongest predictors which can be used to develop a model are:
+1) OverallQual
+2) GrLivArea
+3) TotalBsmtSF
+4) GarageCars
+5) ExterQual
+
+
+The above predictors were then used in the step function to find the interactions which would affect a model.
+
+```{r,  echo=F, message=F, include=FALSE, warning=FALSE}
+
+inter_Model <- standardize(lm(formula = SalePrice ~ OverallQual + GrLivArea + GarageCars + ExterQual + TotalBsmtSF + BsmtQual + PoolQC + Neighborhood +I(OverallQual^2) + I(GrLivArea^2) + I(GarageCars^2) + I(ExterQual^2) + I(TotalBsmtSF^2) + I(BsmtQual^2), data=kHouseData))
+
+display(inter_Model)
+
+inter_Model1<-standardize(lm(formula = SalePrice ~ OverallQual + GrLivArea + GarageCars +
+                           TotalBsmtSF+ ExterQual,data=kHouseData))
+display(inter_Model1)
+AIC(inter_Model1)
+rmse( kHouseData$SalePrice, predict(inter_Model1))
+
+
+inter_Model2<-standardize(lm(formula = SalePrice ~ OverallQual + GrLivArea + GarageCars +
+                           TotalBsmtSF+ Neighborhood,data=kHouseData))
+display(inter_Model2)
+AIC(inter_Model2)
+rmse( kHouseData$SalePrice, predict(inter_Model2))
+```
+
+The strongest predictors were then used again in various model to select the best model and the selection was carried out by comparing the RMSEs of the models.
+
+1) KNN - 30610.55
+2) Linear Model - 37568.31
+3) Ridge Model - 37628.02
+4) Lasso Model - 37570.97
+5) Mix- Lasso and Ridge - 37628.02
+
+Looking at the RMSEs of the above models we can say that the Caret model using method "Knn" has the lowest RMSE and is the best model to choose.
+
+
+
+```{r  echo=F, message=F, include=FALSE, warning=FALSE}
+set.seed(14)
+model1 <-train(SalePrice ~  OverallQual + GrLivArea + GarageCars +
+                 TotalBsmtSF+ ExterQual, 
+               method="knn",
+               preProcess=c("center","scale"),
+               data= kHouseData)
+rmse(kHouseData$SalePrice, predict(model1,newdata = kHouseData))
+plot(model1)
+
+set.seed(14)
+model2 <-train(SalePrice ~  OverallQual + GrLivArea + GarageCars +
+                 TotalBsmtSF+ ExterQual, 
+               method="lm",
+               data= kHouseData)
+rmse(kHouseData$SalePrice, predict(model2))
+
+model3 <- lm( SalePrice ~  OverallQual + GrLivArea + GarageCars +
+                TotalBsmtSF+ ExterQual, data = kHouseData)
+
+rmse(kHouseData$SalePrice, predict(model3))
+
+set.seed(14)
+ridgeModel1 <- train(SalePrice ~ OverallQual + GrLivArea + TotalBsmtSF + GarageCars + ExterQual, 
+                    data = kHouseData,
+                    preProcess = c("center", "scale"),
+                    method = "glmnet",
+                    tuneGrid= expand.grid(
+                      alpha=0,
+                      lambda = seq(0,10, .1)))
+
+rmse(kHouseData$SalePrice, predict(ridgeModel1,newdata = kHouseData))
+
+set.seed(14)
+lassoModel1 <- train(SalePrice ~ OverallQual + GrLivArea + TotalBsmtSF + GarageCars + ExterQual, 
+                     data = kHouseData,
+                     preProcess = c("center", "scale"),
+                     method = "glmnet",
+                     tuneGrid= expand.grid(
+                       alpha=1,
+                       lambda = seq(0,10, .1)))
+
+rmse(kHouseData$SalePrice, predict(lassoModel1,newdata = kHouseData))
+
+set.seed(14)
+mixModel1 <- train(SalePrice ~ OverallQual + GrLivArea + TotalBsmtSF + GarageCars +ExterQual, 
+                  data = kHouseData,
+                  preProcess = c("center", "scale"),
+                  method = "glmnet",
+                  tuneGrid= expand.grid(
+                    alpha=0:1,
+                    lambda = seq(0,10, .1)))
+
+rmse(kHouseData$SalePrice, predict(mixModel1,newdata = kHouseData))
+
+```
+
+#Model performance on the train set and test set
+The model with Knn method has the lowest RMSE and thus we can say that the model is better fitting model on the train dataset and can be tested on the test dataset.
+
+As we cannot calculate the accuracy of the model using the given test dataset as test dataset is missing SalesPrice, Hence, we divided our traindata set into 70% and 30% to see the performance on new test dataset. The test RMSE is 26992.69 and R2 is 0.87, hence we can estimate that the model shall perfrom fairly well on the kaggle "test" dataset.
+```{r,  echo=F, message=F, include=FALSE, warning=FALSE}
+index <- sample(nrow(kHouseData), 0.7*nrow(kHouseData), replace = F)
+
+set.seed(14)
+new_test <- kHouseData[-index, ]
+new_prediction <- predict(model1, newdata= new_test)
+rmse(new_test$SalePrice, new_prediction)
+
+R2 <- function(y, yhat, ybar, digits = 2) {
+  1 - sum((y - yhat)^2)/sum((y - ybar)^2)
+}
+
+actualR2<-R2(y = new_test$SalePrice, yhat = predict(model1,newdata = new_test), mean(new_test$SalePrice))
+round(actualR2,2)
+
+
+```
+
+#Result
+Our final model reveals that the housing prices in Ames are seen to be predicted by the rating of overall material and finish quality, Above grade (ground) living area square feet, Total square feet of basement area , Size of garage in car capacity and the Exterior material quality.
+
